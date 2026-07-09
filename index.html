@@ -134,7 +134,7 @@
 </div>
 
 <div id="sidebar">
-  <h1>🚀 AstroSandbox <span style="font-size:10px;color:#8b949e;font-weight:normal">v1.0.0</span></h1>
+  <h1>🚀 AstroSandbox <span style="font-size:10px;color:#8b949e;font-weight:normal">v1.1.0</span></h1>
 
   <div class="group">
     <div class="group-title">Ambiente</div>
@@ -196,7 +196,7 @@
     🌋 Lava + acqua → pietra + vapore<br>
     🛰️ In zero-g i fluidi vagano liberi<br><br>
     <b>Mouse:</b> sinistro disegna, destro cancella<br><br>
-    <a href="https://github.com/gmy77/astrosandbox" style="color:#58a6ff;text-decoration:none">AstroSandbox v1.0.0 · GitHub</a>
+    <a href="https://github.com/gmy77/astrosandbox" style="color:#58a6ff;text-decoration:none">AstroSandbox v1.1.0 · GitHub</a>
   </div>
 </div>
 
@@ -217,6 +217,7 @@ const img = octx.createImageData(W, H);
 const grid = new Uint8Array(W * H);      // id materiale
 const temp = new Float32Array(W * H);    // temperatura °C
 const life = new Uint8Array(W * H);      // vita residua (fuoco/fumo)
+const moved = new Uint8Array(W * H);     // flag "già mosso in questo step" (evita bias di scansione)
 temp.fill(20);
 
 const AMBIENT = 20;
@@ -358,6 +359,7 @@ function swap(i, j) {
   const g = grid[i]; grid[i] = grid[j]; grid[j] = g;
   const l = life[i]; life[i] = life[j]; life[j] = l;
   const t = temp[i]; temp[i] = temp[j]; temp[j] = t;
+  moved[i] = moved[j] = 1; // ogni particella si muove al massimo una volta per step
 }
 
 function density(id) {
@@ -373,11 +375,15 @@ function isMobile(id) {
   return t === 'liquid' || t === 'powder' || t === 'gas' || t === 'energy';
 }
 
+// una cella è "libera" solo se vuota e non liberata in questo stesso step
+// (altrimenti la scansione dal basso crea un bias direzionale)
+function free(j) {
+  return j >= 0 && grid[j] === 0 && !moved[j];
+}
+
 function tryMove(i, targets) {
   for (const j of targets) {
-    if (j < 0) continue;
-    const tid = grid[j];
-    if (tid === 0) { swap(i, j); return true; }
+    if (free(j)) { swap(i, j); return true; }
   }
   return false;
 }
@@ -386,16 +392,18 @@ let frame = 0;
 
 function step() {
   frame++;
-  const dirLR = frame % 2 === 0 ? 1 : -1;
+  moved.fill(0);
+  // direzioni di scansione casuali: gli artefatti direzionali si cancellano in media
+  const dirLR = Math.random() < 0.5 ? 1 : -1;
+  const dirUD = Math.random() < 0.5 ? 1 : -1;
 
-  // aggiorna dal basso verso l'alto per cadute corrette
-  for (let y = H - 1; y >= 0; y--) {
-    const xStart = dirLR === 1 ? 0 : W - 1;
+  for (let ky = 0; ky < H; ky++) {
+    const y = dirUD === 1 ? H - 1 - ky : ky;
     for (let k = 0; k < W; k++) {
       const x = dirLR === 1 ? k : W - 1 - k;
       const i = y * W + x;
       const id = grid[i];
-      if (id === 0) continue;
+      if (id === 0 || moved[i]) continue;
       const m = byId[id];
 
       // --- reazioni chimiche/termiche ---
@@ -417,7 +425,7 @@ function step() {
 
       if (type === 'gas' || type === 'energy') {
         // gas: sale e si disperde (in zero-g si disperde in tutte le direzioni)
-        moveGas(i, above, aboveL, aboveR, left, right, below);
+        moveGas(i, above, aboveL, aboveR, left, right, below, belowL, belowR);
         continue;
       }
 
@@ -433,28 +441,28 @@ function step() {
         // diagonali
         const d1 = Math.random() < 0.5 ? belowL : belowR;
         const d2 = d1 === belowL ? belowR : belowL;
-        if (d1 >= 0 && grid[d1] === 0) { swap(i, d1); continue; }
-        if (d2 >= 0 && grid[d2] === 0) { swap(i, d2); continue; }
+        if (free(d1)) { swap(i, d1); continue; }
+        if (free(d2)) { swap(i, d2); continue; }
         // i liquidi scorrono lateralmente
         if (type === 'liquid') {
           const s1 = Math.random() < 0.5 ? left : right;
           const s2 = s1 === left ? right : left;
-          if (s1 >= 0 && grid[s1] === 0) { swap(i, s1); continue; }
-          if (s2 >= 0 && grid[s2] === 0) { swap(i, s2); continue; }
+          if (free(s1)) { swap(i, s1); continue; }
+          if (free(s2)) { swap(i, s2); continue; }
         }
       } else if (gravity === 0) {
         // ZERO-G: deriva browniana lenta in tutte le direzioni
         if (Math.random() < 0.35) {
           const dirs = [above, below, left, right, aboveL, aboveR, belowL, belowR];
           const j = dirs[Math.floor(Math.random() * dirs.length)];
-          if (j >= 0 && grid[j] === 0) swap(i, j);
+          if (free(j)) swap(i, j);
         }
       } else {
         // gravità lunare: caduta lenta
-        if (Math.random() < gravity * 2 && below >= 0 && grid[below] === 0) swap(i, below);
+        if (Math.random() < gravity * 2 && free(below)) swap(i, below);
         else if (Math.random() < 0.1) {
           const s = Math.random() < 0.5 ? left : right;
-          if (s >= 0 && grid[s] === 0) swap(i, s);
+          if (free(s)) swap(i, s);
         }
       }
     }
@@ -463,7 +471,7 @@ function step() {
   conductHeat();
 }
 
-function moveGas(i, above, aboveL, aboveR, left, right, below) {
+function moveGas(i, above, aboveL, aboveR, left, right, below, belowL, belowR) {
   if (gravity > 0) {
     // sale
     if (Math.random() < 0.7) {
@@ -471,12 +479,12 @@ function moveGas(i, above, aboveL, aboveR, left, right, below) {
       if (tryMove(i, targets)) return;
     }
     const s = Math.random() < 0.5 ? left : right;
-    if (s >= 0 && grid[s] === 0 && Math.random() < 0.5) swap(i, s);
+    if (free(s) && Math.random() < 0.5) swap(i, s);
   } else {
-    // zero-g: espansione isotropa
-    const dirs = [above, below, left, right, aboveL, aboveR];
+    // zero-g: espansione isotropa (tutte e 8 le direzioni, nessun bias)
+    const dirs = [above, below, left, right, aboveL, aboveR, belowL, belowR];
     const j = dirs[Math.floor(Math.random() * dirs.length)];
-    if (j >= 0 && grid[j] === 0) swap(i, j);
+    if (free(j)) swap(i, j);
   }
 }
 
@@ -524,7 +532,7 @@ function react(i, x, y, id, m) {
     }
 
     case M.FUMO:
-      if (Math.random() < 0.01 && --life[i] <= 0) { grid[i] = 0; return true; }
+      if (Math.random() < 0.04 && --life[i] <= 0) { grid[i] = 0; return true; }
       break;
 
     case M.ACQUA:
