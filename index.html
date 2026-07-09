@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AstroSandbox — Simulatore di Sostanze Spaziale</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: 'Segoe UI', sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    min-width: 0;
+  }
+  #canvas {
+    border: 2px solid #30363d;
+    border-radius: 8px;
+    cursor: crosshair;
+    image-rendering: pixelated;
+    max-width: 100%;
+    max-height: calc(100vh - 70px);
+    background: #000;
+  }
+  #statusbar {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #8b949e;
+    display: flex;
+    gap: 20px;
+  }
+  #sidebar {
+    width: 250px;
+    background: #161b22;
+    border-left: 1px solid #30363d;
+    padding: 14px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  #sidebar h1 {
+    font-size: 15px;
+    margin-bottom: 12px;
+    color: #58a6ff;
+  }
+  .group { margin-bottom: 14px; }
+  .group-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #8b949e;
+    margin-bottom: 6px;
+  }
+  .btn-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+  button.mat {
+    flex: 1 1 45%;
+    padding: 7px 4px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #e6edf3;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-start;
+    transition: background 0.1s;
+  }
+  button.mat:hover { background: #30363d; }
+  button.mat.active {
+    border-color: #58a6ff;
+    background: #1a2f4a;
+    box-shadow: 0 0 0 1px #58a6ff;
+  }
+  .swatch {
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  select, input[type=range] {
+    width: 100%;
+    background: #21262d;
+    color: #e6edf3;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 5px;
+  }
+  .actions { display: flex; gap: 5px; }
+  .actions button {
+    flex: 1;
+    padding: 7px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #e6edf3;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .actions button:hover { background: #30363d; }
+  .actions button.danger:hover { background: #6e2121; border-color: #f85149; }
+  #info {
+    font-size: 11px;
+    color: #8b949e;
+    line-height: 1.5;
+    border-top: 1px solid #30363d;
+    padding-top: 10px;
+  }
+  label.small { font-size: 11px; color: #8b949e; display: block; margin-bottom: 3px; }
+</style>
+</head>
+<body>
+
+<div id="main">
+  <canvas id="canvas"></canvas>
+  <div id="statusbar">
+    <span id="st-fps">FPS: --</span>
+    <span id="st-particles">Particelle: 0</span>
+    <span id="st-temp">Temp: --</span>
+    <span id="st-mode">Gravità: Terra</span>
+  </div>
+</div>
+
+<div id="sidebar">
+  <h1>🚀 AstroSandbox <span style="font-size:10px;color:#8b949e;font-weight:normal">v1.0.0</span></h1>
+
+  <div class="group">
+    <div class="group-title">Ambiente</div>
+    <label class="small">Gravità</label>
+    <select id="gravity">
+      <option value="1">🌍 Terra (9.81 m/s²)</option>
+      <option value="0.16">🌙 Luna (1.62 m/s²)</option>
+      <option value="0">🛰️ Spazio (zero-g)</option>
+    </select>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Muri e Solidi</div>
+    <div class="btn-grid" id="g-solids"></div>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Liquidi</div>
+    <div class="btn-grid" id="g-liquids"></div>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Polveri</div>
+    <div class="btn-grid" id="g-powders"></div>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Gas</div>
+    <div class="btn-grid" id="g-gases"></div>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Energia</div>
+    <div class="btn-grid" id="g-energy"></div>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Strumenti</div>
+    <div class="btn-grid" id="g-tools"></div>
+  </div>
+
+  <div class="group">
+    <label class="small">Dimensione pennello: <span id="brush-val">4</span></label>
+    <input type="range" id="brush" min="1" max="20" value="4">
+  </div>
+
+  <div class="group actions">
+    <button id="btn-pause">⏸ Pausa</button>
+    <button id="btn-clear" class="danger">🗑 Pulisci</button>
+  </div>
+
+  <div id="info">
+    <b>Interazioni:</b><br>
+    🔥 Il fuoco accende gas, olio e legno<br>
+    💧 L'acqua bolle a 100°C → vapore<br>
+    🧊 L'acqua congela sotto 0°C<br>
+    ⚙️ Il ferro conduce il calore e fonde a 1538°C<br>
+    🧱 Il cemento isola il calore<br>
+    🌋 Lava + acqua → pietra + vapore<br>
+    🛰️ In zero-g i fluidi vagano liberi<br><br>
+    <b>Mouse:</b> sinistro disegna, destro cancella<br><br>
+    <a href="https://github.com/gmy77/astrosandbox" style="color:#58a6ff;text-decoration:none">AstroSandbox v1.0.0 · GitHub</a>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ---------- Griglia ----------
+const W = 220, H = 150, SCALE = 4;
+const canvas = document.getElementById('canvas');
+canvas.width = W * SCALE;
+canvas.height = H * SCALE;
+const ctx = canvas.getContext('2d');
+const off = document.createElement('canvas');
+off.width = W; off.height = H;
+const octx = off.getContext('2d');
+const img = octx.createImageData(W, H);
+
+const grid = new Uint8Array(W * H);      // id materiale
+const temp = new Float32Array(W * H);    // temperatura °C
+const life = new Uint8Array(W * H);      // vita residua (fuoco/fumo)
+temp.fill(20);
+
+const AMBIENT = 20;
+
+// ---------- Materiali ----------
+const E = 0; // vuoto
+const MAT = {
+  CEMENTO:  { id: 1,  name: '🧱 Cemento', color: [130,130,125], type: 'solid',  cond: 0.02 },
+  FERRO:    { id: 2,  name: '⚙️ Ferro',   color: [175,180,190], type: 'solid',  cond: 0.55, melt: 1538 },
+  LEGNO:    { id: 3,  name: '🪵 Legno',   color: [125, 85, 45], type: 'solid',  cond: 0.05, ignite: 300 },
+  VETRO:    { id: 4,  name: '🔷 Vetro',   color: [ 90,140,170], type: 'solid',  cond: 0.10, melt: 1400 },
+  PIETRA:   { id: 5,  name: '🪨 Pietra',  color: [ 95, 95,100], type: 'solid',  cond: 0.08, melt: 1200 },
+
+  ACQUA:    { id: 6,  name: '💧 Acqua',   color: [ 40,110,220], type: 'liquid', dens: 1.0, cond: 0.30 },
+  OLIO:     { id: 7,  name: '🛢️ Olio',    color: [110, 90, 30], type: 'liquid', dens: 0.8, cond: 0.10, ignite: 250 },
+  LAVA:     { id: 8,  name: '🌋 Lava',    color: [235, 90, 20], type: 'liquid', dens: 2.5, cond: 0.40, hot: 1200 },
+  ACIDO:    { id: 9,  name: '🧪 Acido',   color: [140,235, 50], type: 'liquid', dens: 1.1, cond: 0.20 },
+
+  SABBIA:   { id: 10, name: '🏖️ Sabbia',  color: [220,190,110], type: 'powder', dens: 1.6, cond: 0.05, melt: 1700 },
+  POLVERE:  { id: 11, name: '💥 Polvere', color: [ 60, 60, 60], type: 'powder', dens: 1.2, cond: 0.05, ignite: 180 },
+  GHIACCIO: { id: 12, name: '🧊 Ghiaccio',color: [170,215,250], type: 'solid',  cond: 0.35 },
+
+  GAS:      { id: 13, name: '💨 Gas',     color: [150,220,150], type: 'gas',    ignite: 200 },
+  VAPORE:   { id: 14, name: '♨️ Vapore',  color: [200,200,210], type: 'gas' },
+  FUMO:     { id: 15, name: '🌫️ Fumo',    color: [ 80, 80, 85], type: 'gas' },
+
+  FUOCO:    { id: 16, name: '🔥 Fuoco',   color: [255,140, 20], type: 'energy' },
+};
+
+const byId = [];
+for (const k in MAT) { MAT[k].key = k; byId[MAT[k].id] = MAT[k]; }
+const M = {}; for (const k in MAT) M[k] = MAT[k].id;
+
+// Strumenti speciali (non materiali)
+const TOOL_HEAT = 100, TOOL_COLD = 101, TOOL_ERASE = 102;
+
+let current = M.ACQUA;
+let gravity = 1;
+let paused = false;
+let brushSize = 4;
+
+// ---------- UI ----------
+function makeBtn(container, label, color, value) {
+  const b = document.createElement('button');
+  b.className = 'mat';
+  b.dataset.value = value;
+  const sw = document.createElement('span');
+  sw.className = 'swatch';
+  sw.style.background = color;
+  b.appendChild(sw);
+  b.appendChild(document.createTextNode(label));
+  b.onclick = () => {
+    current = value;
+    document.querySelectorAll('button.mat').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+  };
+  document.getElementById(container).appendChild(b);
+  return b;
+}
+
+const groups = {
+  solid:  'g-solids', liquid: 'g-liquids', powder: 'g-powders',
+  gas: 'g-gases', energy: 'g-energy'
+};
+for (const k in MAT) {
+  const m = MAT[k];
+  makeBtn(groups[m.type], m.name, `rgb(${m.color})`, m.id);
+}
+makeBtn('g-energy', '☀️ Calore', 'orange', TOOL_HEAT);
+makeBtn('g-energy', '❄️ Freddo', 'lightblue', TOOL_COLD);
+makeBtn('g-tools', '🧹 Gomma', '#333', TOOL_ERASE);
+
+// attiva acqua di default
+document.querySelector(`button.mat[data-value="${M.ACQUA}"]`).classList.add('active');
+
+document.getElementById('gravity').onchange = e => {
+  gravity = parseFloat(e.target.value);
+  const names = { '1': 'Terra', '0.16': 'Luna', '0': 'Spazio (zero-g)' };
+  document.getElementById('st-mode').textContent = 'Gravità: ' + names[e.target.value];
+};
+document.getElementById('brush').oninput = e => {
+  brushSize = parseInt(e.target.value);
+  document.getElementById('brush-val').textContent = brushSize;
+};
+document.getElementById('btn-pause').onclick = function() {
+  paused = !paused;
+  this.textContent = paused ? '▶ Riprendi' : '⏸ Pausa';
+};
+document.getElementById('btn-clear').onclick = () => {
+  grid.fill(0); life.fill(0); temp.fill(AMBIENT);
+};
+
+// ---------- Input mouse ----------
+let mouseDown = 0, mx = 0, my = 0;
+canvas.oncontextmenu = e => e.preventDefault();
+canvas.onmousedown = e => { mouseDown = e.button === 2 ? 2 : 1; trackMouse(e); };
+window.onmouseup = () => mouseDown = 0;
+canvas.onmousemove = trackMouse;
+canvas.ontouchstart = canvas.ontouchmove = e => {
+  e.preventDefault(); mouseDown = 1;
+  trackMouse(e.touches[0]);
+};
+canvas.ontouchend = () => mouseDown = 0;
+
+function trackMouse(e) {
+  const r = canvas.getBoundingClientRect();
+  mx = Math.floor((e.clientX - r.left) / r.width * W);
+  my = Math.floor((e.clientY - r.top) / r.height * H);
+}
+
+function paint() {
+  if (!mouseDown) return;
+  const val = mouseDown === 2 ? TOOL_ERASE : current;
+  const r = brushSize;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx*dx + dy*dy > r*r) continue;
+      const x = mx + dx, y = my + dy;
+      if (x < 0 || x >= W || y < 0 || y >= H) continue;
+      const i = y * W + x;
+      if (val === TOOL_ERASE) { grid[i] = 0; life[i] = 0; temp[i] = AMBIENT; }
+      else if (val === TOOL_HEAT) { temp[i] += 40; }
+      else if (val === TOOL_COLD) { temp[i] -= 40; }
+      else {
+        // i materiali si disegnano solo su vuoto (i solidi sovrascrivono tutto)
+        const m = byId[val];
+        if (grid[i] === 0 || m.type === 'solid') {
+          grid[i] = val;
+          life[i] = val === M.FUOCO ? 60 + Math.random() * 60 : 0;
+          temp[i] = val === M.FUOCO ? 600 : (val === M.LAVA ? 1200 : (val === M.GHIACCIO ? -10 : AMBIENT));
+        }
+      }
+    }
+  }
+}
+
+// ---------- Fisica ----------
+function swap(i, j) {
+  const g = grid[i]; grid[i] = grid[j]; grid[j] = g;
+  const l = life[i]; life[i] = life[j]; life[j] = l;
+  const t = temp[i]; temp[i] = temp[j]; temp[j] = t;
+}
+
+function density(id) {
+  if (id === 0) return 0;
+  const m = byId[id];
+  if (m.type === 'gas' || m.type === 'energy') return 0.01;
+  return m.dens || 10; // solidi = pesantissimi (non si spostano)
+}
+
+function isMobile(id) {
+  if (id === 0) return false;
+  const t = byId[id].type;
+  return t === 'liquid' || t === 'powder' || t === 'gas' || t === 'energy';
+}
+
+function tryMove(i, targets) {
+  for (const j of targets) {
+    if (j < 0) continue;
+    const tid = grid[j];
+    if (tid === 0) { swap(i, j); return true; }
+  }
+  return false;
+}
+
+let frame = 0;
+
+function step() {
+  frame++;
+  const dirLR = frame % 2 === 0 ? 1 : -1;
+
+  // aggiorna dal basso verso l'alto per cadute corrette
+  for (let y = H - 1; y >= 0; y--) {
+    const xStart = dirLR === 1 ? 0 : W - 1;
+    for (let k = 0; k < W; k++) {
+      const x = dirLR === 1 ? k : W - 1 - k;
+      const i = y * W + x;
+      const id = grid[i];
+      if (id === 0) continue;
+      const m = byId[id];
+
+      // --- reazioni chimiche/termiche ---
+      if (react(i, x, y, id, m)) continue;
+
+      // --- movimento ---
+      if (!isMobile(id)) continue;
+
+      const below = y < H - 1 ? i + W : -1;
+      const above = y > 0 ? i - W : -1;
+      const left  = x > 0 ? i - 1 : -1;
+      const right = x < W - 1 ? i + 1 : -1;
+      const belowL = (y < H - 1 && x > 0) ? i + W - 1 : -1;
+      const belowR = (y < H - 1 && x < W - 1) ? i + W + 1 : -1;
+      const aboveL = (y > 0 && x > 0) ? i - W - 1 : -1;
+      const aboveR = (y > 0 && x < W - 1) ? i - W + 1 : -1;
+
+      const type = m.type;
+
+      if (type === 'gas' || type === 'energy') {
+        // gas: sale e si disperde (in zero-g si disperde in tutte le direzioni)
+        moveGas(i, above, aboveL, aboveR, left, right, below);
+        continue;
+      }
+
+      // liquidi e polveri
+      if (gravity > 0 && Math.random() < Math.max(gravity, 0.2)) {
+        // caduta con scambio per densità
+        if (below >= 0) {
+          const bid = grid[below];
+          if (bid === 0 || (isMobile(bid) && density(bid) < density(id) - 0.05 && Math.random() < 0.6)) {
+            swap(i, below); continue;
+          }
+        }
+        // diagonali
+        const d1 = Math.random() < 0.5 ? belowL : belowR;
+        const d2 = d1 === belowL ? belowR : belowL;
+        if (d1 >= 0 && grid[d1] === 0) { swap(i, d1); continue; }
+        if (d2 >= 0 && grid[d2] === 0) { swap(i, d2); continue; }
+        // i liquidi scorrono lateralmente
+        if (type === 'liquid') {
+          const s1 = Math.random() < 0.5 ? left : right;
+          const s2 = s1 === left ? right : left;
+          if (s1 >= 0 && grid[s1] === 0) { swap(i, s1); continue; }
+          if (s2 >= 0 && grid[s2] === 0) { swap(i, s2); continue; }
+        }
+      } else if (gravity === 0) {
+        // ZERO-G: deriva browniana lenta in tutte le direzioni
+        if (Math.random() < 0.35) {
+          const dirs = [above, below, left, right, aboveL, aboveR, belowL, belowR];
+          const j = dirs[Math.floor(Math.random() * dirs.length)];
+          if (j >= 0 && grid[j] === 0) swap(i, j);
+        }
+      } else {
+        // gravità lunare: caduta lenta
+        if (Math.random() < gravity * 2 && below >= 0 && grid[below] === 0) swap(i, below);
+        else if (Math.random() < 0.1) {
+          const s = Math.random() < 0.5 ? left : right;
+          if (s >= 0 && grid[s] === 0) swap(i, s);
+        }
+      }
+    }
+  }
+
+  conductHeat();
+}
+
+function moveGas(i, above, aboveL, aboveR, left, right, below) {
+  if (gravity > 0) {
+    // sale
+    if (Math.random() < 0.7) {
+      const targets = Math.random() < 0.5 ? [above, aboveL, aboveR] : [above, aboveR, aboveL];
+      if (tryMove(i, targets)) return;
+    }
+    const s = Math.random() < 0.5 ? left : right;
+    if (s >= 0 && grid[s] === 0 && Math.random() < 0.5) swap(i, s);
+  } else {
+    // zero-g: espansione isotropa
+    const dirs = [above, below, left, right, aboveL, aboveR];
+    const j = dirs[Math.floor(Math.random() * dirs.length)];
+    if (j >= 0 && grid[j] === 0) swap(i, j);
+  }
+}
+
+function neighborsOf(i, x, y) {
+  const n = [];
+  if (y > 0) n.push(i - W);
+  if (y < H - 1) n.push(i + W);
+  if (x > 0) n.push(i - 1);
+  if (x < W - 1) n.push(i + 1);
+  return n;
+}
+
+function react(i, x, y, id, m) {
+  const t = temp[i];
+
+  switch (id) {
+    case M.FUOCO: {
+      temp[i] = Math.max(temp[i], 500);
+      if (--life[i] <= 0) {
+        grid[i] = Math.random() < 0.3 ? M.FUMO : 0;
+        life[i] = 100;
+        temp[i] = 150;
+        return true;
+      }
+      // accende i vicini infiammabili
+      for (const j of neighborsOf(i, x, y)) {
+        const nid = grid[j];
+        if (nid === 0) continue;
+        const nm = byId[nid];
+        if (nm.ignite && Math.random() < 0.25) {
+          grid[j] = M.FUOCO;
+          life[j] = nid === M.POLVERE ? 20 : 80;
+          temp[j] = 600;
+          if (nid === M.POLVERE) { // esplosione: scalda area
+            for (const jj of neighborsOf(j, j % W, (j / W) | 0)) temp[jj] += 300;
+          }
+        }
+        // il fuoco fa evaporare l'acqua vicina
+        if (nid === M.ACQUA && Math.random() < 0.15) {
+          grid[j] = M.VAPORE; temp[j] = 110;
+          if (Math.random() < 0.5) { grid[i] = M.FUMO; life[i] = 60; return true; }
+        }
+      }
+      break;
+    }
+
+    case M.FUMO:
+      if (Math.random() < 0.01 && --life[i] <= 0) { grid[i] = 0; return true; }
+      break;
+
+    case M.ACQUA:
+      if (t >= 100) { grid[i] = M.VAPORE; return false; }
+      if (t <= 0)   { grid[i] = M.GHIACCIO; return true; }
+      // acqua + lava adiacente → pietra
+      for (const j of neighborsOf(i, x, y)) {
+        if (grid[j] === M.LAVA) {
+          grid[j] = M.PIETRA; temp[j] = 300;
+          grid[i] = M.VAPORE; temp[i] = 120;
+          return false;
+        }
+      }
+      break;
+
+    case M.VAPORE:
+      if (t < 95) { grid[i] = Math.random() < 0.7 ? M.ACQUA : 0; return false; }
+      break;
+
+    case M.GHIACCIO:
+      if (t > 2) { grid[i] = M.ACQUA; return false; }
+      break;
+
+    case M.LAVA:
+      temp[i] = Math.max(temp[i], 900);
+      if (t < 650) { grid[i] = M.PIETRA; return true; }
+      // la lava accende ciò che tocca
+      for (const j of neighborsOf(i, x, y)) {
+        const nid = grid[j];
+        if (nid && byId[nid].ignite && Math.random() < 0.3) {
+          grid[j] = M.FUOCO; life[j] = 80; temp[j] = 700;
+        }
+      }
+      break;
+
+    case M.ACIDO:
+      // corrode i solidi (tranne il vetro) e le polveri
+      for (const j of neighborsOf(i, x, y)) {
+        const nid = grid[j];
+        if (nid === 0 || nid === M.ACIDO || nid === M.VETRO) continue;
+        const nt = byId[nid].type;
+        if ((nt === 'solid' || nt === 'powder') && Math.random() < 0.04) {
+          grid[j] = 0;
+          if (Math.random() < 0.3) { grid[i] = M.FUMO; life[i] = 40; }
+          break;
+        }
+      }
+      break;
+
+    case M.FERRO:
+    case M.VETRO:
+    case M.PIETRA:
+    case M.SABBIA:
+      if (m.melt && t >= m.melt) { grid[i] = M.LAVA; temp[i] = m.melt + 100; return false; }
+      break;
+
+    case M.LEGNO:
+    case M.OLIO:
+    case M.GAS:
+    case M.POLVERE:
+      if (m.ignite && t >= m.ignite) {
+        grid[i] = M.FUOCO;
+        life[i] = id === M.POLVERE ? 15 : 90;
+        temp[i] = 600;
+        return true;
+      }
+      break;
+  }
+  return false;
+}
+
+function conductHeat() {
+  // conduzione: campiona coppie casuali di vicini
+  const samples = W * H / 2;
+  for (let s = 0; s < samples; s++) {
+    const i = (Math.random() * W * H) | 0;
+    const x = i % W, y = (i / W) | 0;
+    const horiz = Math.random() < 0.5;
+    let j;
+    if (horiz) j = x < W - 1 ? i + 1 : i - 1;
+    else j = y < H - 1 ? i + W : i - W;
+
+    const ci = grid[i] ? (byId[grid[i]].cond ?? 0.08) : 0.15;
+    const cj = grid[j] ? (byId[grid[j]].cond ?? 0.08) : 0.15;
+    const c = Math.min(ci, cj) * 2;
+    const dt = (temp[j] - temp[i]) * c * 0.5;
+    temp[i] += dt; temp[j] -= dt;
+
+    // dissipazione verso ambiente (le celle vuote tornano a 20°)
+    if (grid[i] === 0) temp[i] += (AMBIENT - temp[i]) * 0.05;
+  }
+}
+
+// ---------- Rendering ----------
+function render() {
+  const d = img.data;
+  let count = 0;
+  for (let i = 0; i < W * H; i++) {
+    const p = i * 4;
+    const id = grid[i];
+    if (id === 0) {
+      // sfondo: nero con leggero bagliore se caldo
+      const t = temp[i];
+      const glow = t > 60 ? Math.min((t - 60) / 400, 0.5) : 0;
+      d[p] = 8 + glow * 180; d[p+1] = 10 + glow * 60; d[p+2] = 16; d[p+3] = 255;
+      continue;
+    }
+    count++;
+    const m = byId[id];
+    let [r, g, b] = m.color;
+    const t = temp[i];
+
+    // variazione casuale statica per texture
+    const n = ((i * 2654435761) >>> 24) / 255 * 24 - 12;
+    r += n; g += n; b += n;
+
+    // fuoco: sfarfallio
+    if (id === M.FUOCO) {
+      const f = Math.random();
+      r = 220 + f * 35; g = 80 + f * 120; b = f * 40;
+    }
+    // lava: pulsa
+    if (id === M.LAVA) {
+      const f = Math.sin(frame * 0.1 + i) * 25;
+      r = Math.min(255, r + f); g = Math.max(40, g + f * 0.5);
+    }
+    // metalli/solidi caldi: bagliore rosso→bianco
+    if (t > 200 && (m.type === 'solid' || id === M.SABBIA)) {
+      const h = Math.min((t - 200) / 1400, 1);
+      r = r + (255 - r) * h;
+      g = g * (1 - h * 0.5) + 80 * h;
+      b = b * (1 - h);
+    }
+
+    d[p] = r; d[p+1] = g; d[p+2] = b; d[p+3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, 0, 0, W * SCALE, H * SCALE);
+
+  // anteprima pennello
+  if (mx >= 0 && mx < W && my >= 0 && my < H) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath();
+    ctx.arc(mx * SCALE + SCALE/2, my * SCALE + SCALE/2, brushSize * SCALE, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  document.getElementById('st-particles').textContent = 'Particelle: ' + count;
+  if (mx >= 0 && mx < W && my >= 0 && my < H) {
+    const i = my * W + mx;
+    const name = grid[i] ? byId[grid[i]].name : 'vuoto';
+    document.getElementById('st-temp').textContent =
+      `${name} · ${temp[i].toFixed(0)}°C`;
+  }
+}
+
+// ---------- Loop ----------
+let lastFps = performance.now(), frames = 0;
+function loop() {
+  paint();
+  if (!paused) { step(); step(); } // 2 step per frame = simulazione più fluida
+  render();
+  frames++;
+  const now = performance.now();
+  if (now - lastFps > 1000) {
+    document.getElementById('st-fps').textContent = 'FPS: ' + frames;
+    frames = 0; lastFps = now;
+  }
+  requestAnimationFrame(loop);
+}
+
+// pavimento iniziale di cemento
+for (let x = 0; x < W; x++) grid[(H - 1) * W + x] = M.CEMENTO;
+
+loop();
+</script>
+</body>
+</html>
